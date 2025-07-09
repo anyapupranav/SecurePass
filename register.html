@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecurePass - Register</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .dark-mode {
+            background-color: #121212;
+            color: #ffffff;
+        }
+
+        .login-card {
+            border-radius: 12px;
+            padding: 30px;
+            background: #ffffff;
+            box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+            transition: background 0.3s;
+            max-width: 400px;
+            margin: auto;
+            margin-top: 10vh;
+            text-align: center;
+        }
+
+        .dark-mode .login-card {
+            background: #1e1e1e;
+            color: white;
+        }
+
+        .btn-primary {
+            background-color: #e67e22;
+            border: none;
+        }
+
+        .toggle-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<script>
+    // === SESSION CHECK (redirect to login if not logged in) ===
+    $(document).ready(function () {
+        $.ajax({
+            url: "API/check_and_maintain_session_and_cookies.php",
+            method: "POST",
+            dataType: "json",
+            success: function (response) {
+                if (response.message === "logged_in") {
+                    window.location.href = "dashboard.html";
+                } else {
+                    initPage();
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('Error:', xhr.responseText);
+            }
+        });
+    });
+</script>
+
+<body>
+
+    <nav class="navbar navbar-light bg-light p-3">
+        <a class="navbar-brand font-weight-bold" href="#">🔒 SecurePass</a>
+        <button id="darkModeToggle" class="toggle-btn">
+            <i class="fas fa-moon"></i>
+        </button>
+    </nav>
+
+    <div class="login-card">
+        <h3>🔒 SecurePass</h3>
+        <div id="registerPageInfoMessage" class="alert alert-dismissible fade show" style="display: none;">
+        </div>
+        <div class="form-group">
+            <input type="text" class="form-control" id="firstname" name="firstname" placeholder="First Name">
+        </div>
+        <div class="form-group">
+            <input type="text" class="form-control" id="lastname" name="lastname" placeholder="Last Name">
+        </div>
+        <div class="form-group">
+            <input type="text" class="form-control" id="useremail" name="useremail" placeholder="Username or Email">
+        </div>
+        <div class="form-group">
+            <div class="input-group">
+                <input type="password" class="form-control" name="password" id="password" placeholder="Enter password">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="button" id="togglePassword"><i
+                            class="fas fa-eye"></i></button>
+                </div>
+            </div>
+        </div>
+        <button type="submit" id="signUp" class="btn btn-primary btn-block">Sign up</button> <br>
+        Already have an account? <a href="login.html">Login</a>
+    </div>
+    <div class="footer">SecurePass © 2025</div>
+
+    <!-- Spinner Overlay -->
+    <div id="spinnerOverlay"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); z-index:9999; text-align:center;">
+        <div class="spinner-border text-primary" role="status" style="margin-top:20%;">
+            <span class="sr-only">Loading...</span>
+        </div>
+    </div>
+
+
+    <script src="darkmode.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.0.0-beta.1/jsencrypt.min.js"></script>
+    <script>
+
+        $(document).ready(function () {
+            // Show spinner on any AJAX start
+            $(document).ajaxStart(function () {
+                $('#spinnerOverlay').show();
+            });
+
+            // Hide spinner when all AJAX calls are done
+            $(document).ajaxStop(function () {
+                $('#spinnerOverlay').hide();
+            });
+        });
+
+        // Load this script after session is authenticated
+        function initPage() {
+
+            // Toggle password visibility
+            $('#togglePassword').click(function () {
+                const passwordField = $('#password');
+                const type = passwordField.attr('type') === 'password' ? 'text' : 'password';
+                passwordField.attr('type', type);
+                $(this).find('i').toggleClass('fa-eye fa-eye-slash');
+            });
+
+            // send request to check sessions
+            $(document).ready(function () {
+                let publicKey = '';
+
+                // Load Config File
+                function loadConfig() {
+                    return fetch('config.env')
+                        .then(response => response.text())
+                        .then(text => {
+                            let lines = text.split('\n');
+                            for (let line of lines) {
+                                let [key, value] = line.split('=').map(s => s.trim());
+                                if (key === 'RSAPUBLICKEY') {
+                                    let publicKey = value.replace(/['"]/g, ''); // Remove quotes if present
+                                    return publicKey; // Return the key
+                                }
+                            }
+                            throw new Error("RSAPUBLICKEY not found in config.env");
+                        })
+                        .catch(error => console.error('Error loading config:', error));
+                }
+
+                // Now, use the returned value:
+                loadConfig().then(publicKey => {
+                    console.log("RSAPUBLICKEY:", publicKey);
+
+                    // Send details to API
+                    $("#signUp").click(function () {
+
+                        const userpassword = $('#password').val();
+
+                        // Encrypt email and password
+                        const encryptor = new JSEncrypt();
+                        encryptor.setPublicKey(publicKey);
+                        const encryptedUserpassword = encryptor.encrypt(userpassword);
+
+                        var formData = {
+                            firstname: $("#firstname").val(),
+                            lastname: $("#lastname").val(),
+                            useremail: $("#useremail").val(),
+                            password: encryptedUserpassword
+                        };
+
+                        $.ajax({
+                            type: "POST",
+                            url: "API/register.php",
+                            data: formData,
+                            dataType: "json",
+                            success: function (response) {
+                                if (response.message == "user already exists") {
+
+                                    // Log event to Database
+                                    $.ajax({
+                                        url: 'API/log_event.php',
+                                        type: 'POST',
+                                        data: {
+                                            action: 'USER_SIGNUP',
+                                            details: `New user signed up`
+                                        }
+                                    });
+
+                                    console.log('Error: User with email exists!');
+                                    // Show error
+                                    $('#registerPageInfoMessage').removeClass('alert-success').addClass('alert-danger').html('Error: User with email exists!').show();
+
+                                    setTimeout(function () {
+                                        $('#registerPageInfoMessage').hide();
+                                    }, 2000);
+                                }
+                                if (response.message == "user registration failed") {
+                                    console.log('Error: User registration failed');
+                                    // Show error
+                                    $('#registerPageInfoMessage').removeClass('alert-success').addClass('alert-danger').html('Error: user registration failed').show();
+
+                                    setTimeout(function () {
+                                        $('#registerPageInfoMessage').hide();
+                                    }, 2000);
+                                }
+                                if (response.message == "user registration sucessful") {
+                                    console.log('New Account created successfully.');
+                                    // Clear values in Registration Form
+                                    $('#firstname').val('');
+                                    $('#lastname').val('');
+                                    $('#useremail').val('');
+                                    $('#password').val('');
+
+                                    // Show success
+                                    $('#registerPageInfoMessage').removeClass('alert-danger').addClass('alert-success').html('New Account created successfully.').show();
+
+                                    setTimeout(function () {
+                                        $('#registerPageInfoMessage').hide();
+                                    }, 2000);
+                                }
+                            },
+                            error: function (xhr, status, error) {
+                                console.log("Error: Cannot create account");
+                            }
+                        });
+                    });
+
+                });
+
+            });
+
+        }
+    </script>
+</body>
+
+</html>
